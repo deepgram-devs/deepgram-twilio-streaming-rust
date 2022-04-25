@@ -30,10 +30,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<State>) {
     let builder = http::Request::builder()
         .method(http::Method::GET)
         .uri(&state.deepgram_url);
-    let builder = builder.header(
-        "Authorization",
-        format!("Token {}", state.api_key).to_string(),
-    );
+    let builder = builder.header("Authorization", format!("Token {}", state.api_key));
     let request = builder
         .body(())
         .expect("Failed to build a connection request to Deepgram.");
@@ -45,12 +42,12 @@ async fn handle_socket(socket: WebSocket, state: Arc<State>) {
     let (callsid_tx, callsid_rx) = oneshot::channel::<String>();
 
     tokio::spawn(handle_to_subscribers(
-        state.clone(),
+        Arc::clone(&state),
         callsid_rx,
         deepgram_reader,
     ));
     tokio::spawn(handle_from_twilio(
-        state.clone(),
+        Arc::clone(&state),
         callsid_tx,
         this_receiver,
         deepgram_sender,
@@ -94,8 +91,8 @@ async fn handle_from_twilio(
         let msg = Message::from(msg);
         if let Message::Text(msg) = msg {
             let event: Result<twilio_response::Event, _> = serde_json::from_str(&msg);
-            match event {
-                Ok(event) => match event.event_type {
+            if let Ok(event) = event {
+                match event.event_type {
                     twilio_response::EventType::Start(start) => {
                         // the "start" event only happens once, so having our oneshot in here is kosher
                         callsid = Some(start.call_sid.clone());
@@ -107,10 +104,12 @@ async fn handle_from_twilio(
                         }
 
                         // make a new set of subscribers for this call, using the callsid as the key
-                        let mut subscribers = state.subscribers.lock().await;
-                        if !subscribers.contains_key(&start.call_sid) {
-                            subscribers.insert(start.call_sid, Vec::new());
-                        }
+                        state
+                            .subscribers
+                            .lock()
+                            .await
+                            .entry(start.call_sid)
+                            .or_default();
                     }
                     twilio_response::EventType::Media(media) => {
                         // NOTE: when Twilio sends media data, it should send 20 ms audio chunks at a time, where each ms of audio is 8 bytes
@@ -186,8 +185,7 @@ async fn handle_from_twilio(
                             }
                         }
                     }
-                },
-                Err(_) => {}
+                }
             }
         }
     }
@@ -212,31 +210,22 @@ async fn handle_to_subscribers(
     // consider this unwrap - what does it mean if we don't receive the callsid here?
     let callsid = callsid_rx.await.unwrap();
 
-    while let Some(msg) = deepgram_receiver.next().await {
-        let msg = if let Ok(msg) = msg {
-            msg
-        } else {
-            return;
-        };
-
+    while let Some(Ok(msg)) = deepgram_receiver.next().await {
         let mut subscribers = state.subscribers.lock().await;
         if let Some(subscribers) = subscribers.get_mut(&callsid) {
-            let mut subscribers_to_remove = Vec::new();
-            for (index, subscriber) in subscribers.iter_mut().enumerate() {
-                if subscriber
-                    .send(Message::from(msg.clone()).into())
-                    .await
-                    .is_err()
-                {
-                    // if we fail to send the message, it means the subscriber's connection is closed
-                    // so we should remove this subscriber
-                    subscribers_to_remove.push(index);
-                }
-            }
-            // remove any subscriber whose connection was closed
-            for subscriber_to_remove in subscribers_to_remove.iter().rev() {
-                subscribers.remove(*subscriber_to_remove);
-            }
+            // send the message to all subscribers concurrently
+            let futs = subscribers
+                .iter_mut()
+                .map(|subscriber| subscriber.send(Message::from(msg.clone()).into()));
+            let results = futures::future::join_all(futs).await;
+
+            // if we successfully sent a message then the subscriber is still connected
+            // other subscribers should be removed
+            *subscribers = subscribers
+                .drain(..)
+                .zip(results)
+                .filter_map(|(subscriber, result)| result.is_ok().then(|| subscriber))
+                .collect();
         }
     }
 }

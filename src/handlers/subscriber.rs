@@ -17,11 +17,7 @@ pub async fn subscriber_handler(
 async fn handle_socket(mut socket: WebSocket, state: Arc<State>) {
     let mut subscribers = state.subscribers.lock().await;
     // send these keys (which will be twilio callsids) to the client
-    let keys = subscribers
-        .keys()
-        .into_iter()
-        .map(|key| key.to_string())
-        .collect();
+    let keys = subscribers.keys().map(|key| key.to_string()).collect();
     // TODO: think about the unwrap - what does it mean that this has failed?
     socket.send(Message::Text(keys).into()).await.unwrap();
 
@@ -30,8 +26,8 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<State>) {
     if let Some(Ok(msg)) = socket.recv().await {
         let msg = Message::from(msg);
         if let Message::Text(callsid) = msg {
-            let callsid = callsid.trim().to_string();
-            if let Some(subscribers) = subscribers.get_mut(&callsid) {
+            let callsid = callsid.trim();
+            if let Some(subscribers) = subscribers.get_mut(callsid) {
                 subscribers.push(socket);
             }
         }

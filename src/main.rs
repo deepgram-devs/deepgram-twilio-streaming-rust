@@ -9,10 +9,10 @@ mod twilio_response;
 
 #[tokio::main]
 async fn main() {
-    let proxy_url = std::env::var("PROXY_URL").unwrap_or("0.0.0.0:5000".to_string());
+    let proxy_url = std::env::var("PROXY_URL").unwrap_or_else(|_| "0.0.0.0:5000".to_string());
 
     let deepgram_url = std::env::var("DEEPGRAM_URL")
-        .unwrap_or("wss://api.deepgram.com/v1/listen?encoding=mulaw&sample_rate=8000&channels=2&multichannel=true".to_string());
+        .unwrap_or_else(|_| "wss://api.deepgram.com/v1/listen?encoding=mulaw&sample_rate=8000&channels=2&multichannel=true".to_string());
 
     let api_key =
         std::env::var("DEEPGRAM_API_KEY").expect("Using this server requires a Deepgram API Key.");
