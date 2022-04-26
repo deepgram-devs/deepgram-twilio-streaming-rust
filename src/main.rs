@@ -2,6 +2,7 @@ use axum::{routing::get, Extension, Router};
 use futures::lock::Mutex;
 use std::{collections::HashMap, sync::Arc};
 
+mod audio;
 mod handlers;
 mod message;
 mod state;
