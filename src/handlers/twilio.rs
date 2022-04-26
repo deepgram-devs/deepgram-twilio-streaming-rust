@@ -1,3 +1,4 @@
+use crate::audio;
 use crate::message::Message;
 use crate::state::State;
 use crate::twilio_response;
@@ -6,7 +7,6 @@ use axum::{
     response::IntoResponse,
     Extension,
 };
-use base64::decode;
 use futures::channel::oneshot;
 use futures::{
     sink::SinkExt,
@@ -63,14 +63,7 @@ async fn handle_from_twilio(
         tokio_tungstenite::tungstenite::Message,
     >,
 ) {
-    pub struct BufferData {
-        inbound_buffer: Vec<u8>,
-        outbound_buffer: Vec<u8>,
-        inbound_last_timestamp: u32,
-        outbound_last_timestamp: u32,
-    }
-
-    let mut buffer_data = BufferData {
+    let mut buffer_data = audio::BufferData {
         inbound_buffer: Vec::new(),
         outbound_buffer: Vec::new(),
         inbound_last_timestamp: 0,
@@ -112,69 +105,7 @@ async fn handle_from_twilio(
                             .or_default();
                     }
                     twilio_response::EventType::Media(media) => {
-                        // NOTE: when Twilio sends media data, it should send 20 ms audio chunks at a time, where each ms of audio is 8 bytes
-                        let media_chunk = decode(media.payload).unwrap();
-                        let media_chunk_size = media_chunk.len();
-                        if media_chunk_size != 20 * 8 {
-                            // WARN: Twilio media chunk size is not the expected size of 20 * 8 bytes.
-                        }
-                        // NOTE: I've seen cases where the timestamp is less than 20 ms ahead of the previous chunk
-                        let timestamp = media.timestamp.parse::<u32>().unwrap();
-
-                        if media.track == "inbound" {
-                            let time_lost = if timestamp < buffer_data.inbound_last_timestamp + 20 {
-                                // WARN: Received inbound timestamp is less than 20 ms ahead of previous timestamp.
-                                0
-                            } else {
-                                (timestamp - (buffer_data.inbound_last_timestamp + 20))
-                                    .try_into()
-                                    .unwrap()
-                            };
-                            if time_lost > 0 {
-                                // silence for mulaw data is 0xff, and there are 8 bytes of mulaw data per ms
-                                let silence = &vec![0xff; 8 * time_lost];
-                                buffer_data.inbound_buffer.extend_from_slice(&silence[..]);
-                            }
-                            buffer_data
-                                .inbound_buffer
-                                .extend_from_slice(&media_chunk[..]);
-                            buffer_data.inbound_last_timestamp = timestamp;
-                        } else if media.track == "outbound" {
-                            let time_lost = if timestamp < buffer_data.outbound_last_timestamp + 20
-                            {
-                                // WARN: Received outbound timestamp is less than 20 ms ahead of previous timestamp.
-                                0
-                            } else {
-                                (timestamp - (buffer_data.outbound_last_timestamp + 20))
-                                    .try_into()
-                                    .unwrap()
-                            };
-                            if time_lost > 0 {
-                                // silence for mulaw data is 0xff, and there are 8 bytes of mulaw data per ms
-                                let silence = &vec![0xff; 8 * time_lost];
-                                buffer_data.outbound_buffer.extend_from_slice(&silence[..]);
-                            }
-                            buffer_data
-                                .outbound_buffer
-                                .extend_from_slice(&media_chunk[..]);
-                            buffer_data.outbound_last_timestamp = timestamp;
-                        }
-
-                        // we will send audio to deepgram once we have 400 ms (20 * 20 * 8 bytes) of audio
-                        while buffer_data.inbound_buffer.len() >= 20 * 20 * 8
-                            && buffer_data.outbound_buffer.len() >= 20 * 20 * 8
-                        {
-                            let inbound_buffer_segment: Vec<u8> =
-                                buffer_data.inbound_buffer.drain(0..20 * 20 * 8).collect();
-                            let outbound_buffer_segment: Vec<u8> =
-                                buffer_data.outbound_buffer.drain(0..20 * 20 * 8).collect();
-
-                            let mut mixed = Vec::new();
-                            for sample in 0..20 * 20 * 8 {
-                                mixed.push(inbound_buffer_segment[sample]);
-                                mixed.push(outbound_buffer_segment[sample]);
-                            }
-
+                        if let Some(mixed) = audio::process_twilio_media(media, &mut buffer_data) {
                             // send the audio on to deepgram
                             if deepgram_sender
                                 .send(Message::Binary(mixed).into())
