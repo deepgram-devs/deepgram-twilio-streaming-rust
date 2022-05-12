@@ -36,7 +36,9 @@ async fn handle_socket(socket: WebSocket, state: Arc<State>) {
         .expect("Failed to build a connection request to Deepgram.");
 
     // connect to deepgram
-    let (deepgram_socket, _) = connect_async(request).await.expect("Failed.");
+    let (deepgram_socket, _) = connect_async(request)
+        .await
+        .expect("Failed to connect to Deepgram.");
     let (deepgram_sender, deepgram_reader) = deepgram_socket.split();
 
     let (callsid_tx, callsid_rx) = oneshot::channel::<String>();
@@ -92,8 +94,9 @@ async fn handle_from_twilio(
 
                         // sending this callsid on our oneshot will let `handle_to_subscribers` know the callsid
                         if let Some(callsid_tx) = callsid_tx.take() {
-                            // consider this unwrap
-                            callsid_tx.send(start.call_sid.clone()).unwrap();
+                            callsid_tx
+                                .send(start.call_sid.clone())
+                                .expect("Failed to send callsid to handle_to_subscribers.");
                         }
 
                         // make a new set of subscribers for this call, using the callsid as the key
@@ -138,8 +141,9 @@ async fn handle_to_subscribers(
     callsid_rx: oneshot::Receiver<String>,
     mut deepgram_receiver: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
 ) {
-    // consider this unwrap - what does it mean if we don't receive the callsid here?
-    let callsid = callsid_rx.await.unwrap();
+    let callsid = callsid_rx
+        .await
+        .expect("Failed to receive callsid from handle_from_twilio.");
 
     while let Some(Ok(msg)) = deepgram_receiver.next().await {
         let mut subscribers = state.subscribers.lock().await;

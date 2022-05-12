@@ -14,7 +14,8 @@ pub struct BufferData {
 
 fn pad_with_silence(buffer: &mut Vec<u8>, current_timestamp: u32, previous_timestamp: u32) {
     let time_lost = if current_timestamp < previous_timestamp + TWILIO_MS_PER_CHUNK as u32 {
-        // WARN: Received timestamp is less than TWILIO_MS_PER_CHUNK = 20 ms ahead of the previous timestamp.
+        // here we have received a timestamp that is less than TWILIO_MS_PER_CHUNK = 20 ms ahead of the previous timestamp
+        // this occasionally occurs and is unexpected behavior from Twilio
         0
     } else {
         current_timestamp - (previous_timestamp + TWILIO_MS_PER_CHUNK as u32)
@@ -37,7 +38,8 @@ pub fn process_twilio_media(
     let media_chunk = base64::decode(media.payload).unwrap();
     let media_chunk_size = media_chunk.len();
     if media_chunk_size != TWILIO_MS_PER_CHUNK * MULAW_BYTES_PER_MS {
-        // WARN: Twilio media chunk size is not the expected size of TWILIO_MS_PER_CHUNK * MULAW_BYTES_PER_MS bytes.
+        // here, the Twilio media chunk size is not the expected size of TWILIO_MS_PER_CHUNK * MULAW_BYTES_PER_MS bytes
+        // this occasionally occurs and is unexpected behavior from Twilio
     }
     // NOTE: I've seen cases where the timestamp is less than TWILIO_MS_PER_CHUNK = 20 ms ahead of the previous chunk
     let timestamp = media.timestamp.parse::<u32>().unwrap();

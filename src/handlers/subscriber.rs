@@ -18,8 +18,10 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<State>) {
     let mut subscribers = state.subscribers.lock().await;
     // send these keys (which will be twilio callsids) to the client
     let keys = subscribers.keys().map(|key| key.to_string()).collect();
-    // TODO: think about the unwrap - what does it mean that this has failed?
-    socket.send(Message::Text(keys).into()).await.unwrap();
+    socket
+        .send(Message::Text(keys).into())
+        .await
+        .expect("Failed to send callsids to client.");
 
     // wait for the first message from the client
     // and interpret it as the callsid to subscribe to
