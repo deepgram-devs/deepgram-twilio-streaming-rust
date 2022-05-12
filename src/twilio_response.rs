@@ -1,22 +1,21 @@
+//! Definitions for the Twilio messages we need to parse
+
 use serde::{Deserialize, Serialize};
 
-// Twilio responses (mostly)
 #[derive(Serialize, Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Event {
     pub event: String,
-    #[serde(rename = "sequenceNumber")]
     pub sequence_number: String,
     #[serde(flatten)]
     pub event_type: EventType,
-    #[serde(rename = "streamSid")]
     pub stream_sid: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub enum EventType {
-    #[serde(rename = "start")]
     Start(EventStart),
-    #[serde(rename = "media")]
     Media(EventMedia),
 }
 
@@ -27,22 +26,19 @@ impl Default for EventType {
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct EventStart {
-    #[serde(rename = "accountSid")]
     pub account_sid: String,
-    #[serde(rename = "streamSid")]
     pub stream_sid: String,
-    #[serde(rename = "callSid")]
     pub call_sid: String,
     pub tracks: Vec<String>,
-    #[serde(rename = "mediaFormat")]
     pub media_format: MediaFormat,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct MediaFormat {
     pub encoding: String,
-    #[serde(rename = "sampleRate")]
     pub sample_rate: u32,
     pub channels: u32,
 }
