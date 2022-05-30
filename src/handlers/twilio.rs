@@ -56,6 +56,35 @@ async fn handle_socket(socket: WebSocket, state: Arc<State>) {
     ));
 }
 
+async fn handle_to_subscribers(
+    state: Arc<State>,
+    callsid_rx: oneshot::Receiver<String>,
+    mut deepgram_receiver: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+) {
+    let callsid = callsid_rx
+        .await
+        .expect("Failed to receive callsid from handle_from_twilio.");
+
+    while let Some(Ok(msg)) = deepgram_receiver.next().await {
+        let mut subscribers = state.subscribers.lock().await;
+        if let Some(subscribers) = subscribers.get_mut(&callsid) {
+            // send the message to all subscribers concurrently
+            let futs = subscribers
+                .iter_mut()
+                .map(|subscriber| subscriber.send(Message::from(msg.clone()).into()));
+            let results = futures::future::join_all(futs).await;
+
+            // if we successfully sent a message then the subscriber is still connected
+            // other subscribers should be removed
+            *subscribers = subscribers
+                .drain(..)
+                .zip(results)
+                .filter_map(|(subscriber, result)| result.is_ok().then(|| subscriber))
+                .collect();
+        }
+    }
+}
+
 async fn handle_from_twilio(
     state: Arc<State>,
     callsid_tx: oneshot::Sender<String>,
@@ -132,35 +161,6 @@ async fn handle_from_twilio(
                 // we don't really care if this succeeds or fails as we are closing/dropping these
                 let _ = subscriber.send(Message::Close(None).into()).await;
             }
-        }
-    }
-}
-
-async fn handle_to_subscribers(
-    state: Arc<State>,
-    callsid_rx: oneshot::Receiver<String>,
-    mut deepgram_receiver: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-) {
-    let callsid = callsid_rx
-        .await
-        .expect("Failed to receive callsid from handle_from_twilio.");
-
-    while let Some(Ok(msg)) = deepgram_receiver.next().await {
-        let mut subscribers = state.subscribers.lock().await;
-        if let Some(subscribers) = subscribers.get_mut(&callsid) {
-            // send the message to all subscribers concurrently
-            let futs = subscribers
-                .iter_mut()
-                .map(|subscriber| subscriber.send(Message::from(msg.clone()).into()));
-            let results = futures::future::join_all(futs).await;
-
-            // if we successfully sent a message then the subscriber is still connected
-            // other subscribers should be removed
-            *subscribers = subscribers
-                .drain(..)
-                .zip(results)
-                .filter_map(|(subscriber, result)| result.is_ok().then(|| subscriber))
-                .collect();
         }
     }
 }
