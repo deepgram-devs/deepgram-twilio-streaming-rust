@@ -33,5 +33,5 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<State>) {
                 subscribers.push(socket);
             }
         }
-    };
+    }
 }
