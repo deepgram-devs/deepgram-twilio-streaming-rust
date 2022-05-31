@@ -105,13 +105,7 @@ async fn handle_from_twilio(
     let mut callsid_tx = Some(callsid_tx);
     let mut callsid: Option<String> = None;
 
-    while let Some(msg) = this_receiver.next().await {
-        let msg = if let Ok(msg) = msg {
-            msg
-        } else {
-            break;
-        };
-
+    while let Some(Ok(msg)) = this_receiver.next().await {
         let msg = Message::from(msg);
         if let Message::Text(msg) = msg {
             let event: Result<twilio_response::Event, _> = serde_json::from_str(&msg);
