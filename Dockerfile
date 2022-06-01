@@ -2,8 +2,10 @@ FROM ubuntu:22.04 as builder
 
 LABEL maintainer="Nikola Whallon <nikola@deepgram.com>"
 
-RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
         ca-certificates \
         clang \
         curl \
@@ -24,12 +26,14 @@ FROM ubuntu:22.04
 
 LABEL maintainer="Nikola Whallon <nikola@deepgram.com>"
 
-RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
         ca-certificates \
         libpq5 \
         libssl3 && \
-    DEBIAN_FRONTEND=noninteractive apt-get clean
+    apt-get clean
 
 COPY --from=builder /bin/deepgram-twilio-streaming-rust /bin/deepgram-twilio-streaming-rust
 
