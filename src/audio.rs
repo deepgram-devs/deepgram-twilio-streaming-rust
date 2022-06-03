@@ -41,7 +41,7 @@ pub fn process_twilio_media(
         // here, the Twilio media chunk size is not the expected size of TWILIO_MS_PER_CHUNK * MULAW_BYTES_PER_MS bytes
         // this occasionally occurs and is unexpected behavior from Twilio
     }
-    // NOTE: I've seen cases where the timestamp is less than TWILIO_MS_PER_CHUNK = 20 ms ahead of the previous chunk
+    // NOTE: There are rare cases where the timestamp is less than TWILIO_MS_PER_CHUNK = 20 ms ahead of the previous chunk
     let timestamp = media.timestamp.parse::<u32>().unwrap();
 
     // pad the inbound or outbound buffer with silence if needed depending on timestamp info
